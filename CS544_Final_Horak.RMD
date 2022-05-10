@@ -1,0 +1,602 @@
+---
+title: "Analysis of Meteorite Landings"
+output:
+html:
+theme: cerulean
+
+---
+
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 14px;
+  }
+td {  /* Table  */
+  font-size: 8px;
+}
+h1.title {
+  font-size: 38px;
+  color: Black;
+}
+h1 { /* Header 1 */
+  font-size: 28px;
+  color: Black;
+}
+h2 { /* Header 2 */
+    font-size: 22px;
+  color: Black;
+}
+h3 { /* Header 3 */
+  font-size: 18px;
+  font-style: italic;
+  color: Black;
+}
+code.r{ /* Code block */
+    font-size: 14px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 16px;
+}
+</style>
+
+
+### Final Project
+### BU MET CS 544
+### Nathan Horak
+### 6/22/2021
+
+# Dataset Description
+
+This dataset was created from information regarding meteorite landings over hundreds of years. Meteorites are
+extraplanetary objects that have breached earth's atmosphere. As they breach the atmosphere, they leave
+behind glowing trails of matter and are often mistakenly referred to as 'shooting stars'. The meteor may or may
+not collide into Earth's surface, creating an impact crater. The dataset consists of meteorite names (based on location),
+recorded class, mass in grams, whether it fell or was found, year of occurrence, recorded latitude, and recorded longitude.
+
+# Project Objective
+
+The objective of the class project is to analyze the data contained within the dataset for the purpose of informing
+the reader. This is done by examining both categorical and numerical variables, looking at the distribution of the data,
+applying the Central Limit Theorem, and performing various sampling method techniques.
+
+# Data Preparation
+
+As seen by the image below, there are multiple levels of classification for meteorites. At the highest level,
+meteorites can be divided into being Undifferentiated or Differentiated. The majority of the meteorites are
+Undifferentiated meteorites. Undifferentiated Meteorites themselves can be divided into four categories:
+Carbonaceous, Ordinary, Rumuruti (R), and Enstatite. Of these categories, the majority are Ordinary meteorites,
+which can be further divided into the categories: H Meteorite, L Meteorite, and LL Meteorite. The data will be wrangled
+to meet the need to examine the data across these three levels of classification.
+
+
+![Image Source: Clipartkey - Meteorite Classification Chart.](Meteor_Type.png)
+
+Using tidyverse, new columns will be created from the original column 'recclass' representing each meteorite's
+classification for each of the three levels. Meteorites that are not in a particular subclass will have an N/A
+value for that respective column. Then, a final column, 'Lowest_Class', will be created that shows each meteorite's
+lowest classification level.
+
+
+```{r, echo=FALSE, message=FALSE}
+###Functions
+differentiateMeteor <- function (x) { ##function to label meteor as Undiff or Diff
+  ifelse (x %in% undiff.list,'Undifferentiated','Differentiated')
+}
+
+undifferentiateType <- function (x) { ##function to labor Undiff meteor type
+  if (x %in% carbon.list)
+    return ('Carbonaceous')
+  if (x %in% ordinary.list)
+    return ('Ordinary')
+  if (x %in% rumuruti.list)
+    return ('Rumuruti (R)')
+  if (x %in% enstatite.list)
+    return ('Enstatite')
+  else
+    return (NA)
+}
+
+ordinaryType <- function (x) { ##Function to label type of Ordinary meteor
+  if (x %in% h.list)
+    return ('H Meteorite')
+  if (x %in% l.list)
+    return ('L Meteorite')
+  if (x %in% ll.list)
+    return ('LL Meteorite')
+  else
+    return (NA)
+}
+
+lowestClassCheck <- function(x) { ##Function to assign lowest classification level
+  if (x %in% carbon.list)
+    return ('Carbonaceous')
+  if (x %in% rumuruti.list)
+    return ('Rumuruti (R)')
+  if (x %in% enstatite.list)
+    return ('Enstatite')
+  if (x %in% h.list)
+    return ('H Meteorite')
+  if (x %in% l.list)
+    return ('L Meteorite')
+  if (x %in% ll.list)
+    return ('LL Meteorite')
+  else
+    return ('Differentiated')
+  
+}
+
+###Setup
+Sys.setenv('MAPBOX_TOKEN' = 'pk.eyJ1Ijoia2FsYXRodXIiLCJhIjoiY2twenk4YmNjMDhydjJ2cmthM3B4Nnh0MiJ9.q-S1vQKIJu33aSKWP7tu8w')
+options(scipen= 7)
+options(warn=-1)
+set.seed(101)
+library(sampling)
+library(stringr)
+library(tidyverse)
+library(plotly)
+library(ggplot2)
+
+###Data Preparation
+old_meteor <- as_tibble(read.csv("C:\\Users\\Nathan\\Documents\\Grad School\\CS 544 Summer 01 2021\\project\\Meteorite-Landings.csv"))
+meteor <- old_meteor ##preserve original tibble
+undiff.list <- unique(c(meteor[str_detect(as.matrix(meteor$recclass),c('^C|^E|^H|^L|[0-9]|OC')),]$recclass)) ##list of Undiff meteors with stringr
+undiff.list <- undiff.list[str_detect(undiff.list,c('ite|Lunar|achon'),negate=TRUE)] #take out any Diff meteors with stringr
+carbon.list <- undiff.list[str_detect(undiff.list,c('^C'))] ##list for types of Undiff
+ordinary.list <- undiff.list[str_detect(undiff.list,c('^H|^L'))]
+rumuruti.list <- undiff.list[str_detect(undiff.list,c('^R'))]
+enstatite.list <- undiff.list[str_detect(undiff.list,c('^E'))]
+h.list <- ordinary.list[str_detect(ordinary.list,c('^H'))] ##list for types of Ordinary
+ll.list <- ordinary.list[str_detect(ordinary.list,c('^LL'))]
+l.list <- ordinary.list[str_detect(ordinary.list,c('^L'))]
+l.list <- l.list[str_detect(l.list,c('^LL'),negate=TRUE)]
+meteor <- meteor %>% ##tidyverse mutate for new columns
+  mutate(Differentiated=sapply(meteor$recclass, differentiateMeteor),
+    Undiff_Type=sapply(meteor$recclass, undifferentiateType),
+    Ordinary_Type=sapply(meteor$recclass, ordinaryType),
+    Lowest_Class=sapply(meteor$recclass, lowestClassCheck))
+
+meteor <- meteor %>%
+  mutate(year=format(as.Date(meteor$year, '%m/%d/%Y'), '%Y')) ##change date format to year
+meteor <- select(meteor, Name=name, Year=year, Fell_Status=fall, Mass=mass..g., Rec_Class=recclass, Differentiated, Undiff_Type, Ordinary_Type, Lowest_Class, Rec_Lat= reclat, Rec_Long= reclong) ##rename and reorder columns
+meteor <- meteor %>% filter(!is.na(Mass)) ##remove meteors with no given mass
+```
+
+# Variable Exploration Analysis
+
+## Barplots of Frequency by Year
+
+The dataset includes information from the year the meteorite crashed through to Earth.
+A barplot of year by frequency shows this data in a concise way. The y-axis
+is logarithmically scaled to provide a cleaner plot.
+
+
+```{r, echo=FALSE}
+###Analysis
+##Barplots of Frequency by Year
+year.freq <- data.frame(table(meteor$Year)) ##df of meteor frequency by year
+plot_ly(x=year.freq$Var1, y=year.freq$Freq, name='Frequency of Meteorites by Year', type='bar') %>%
+  layout(yaxis= list(title='Frequency',type='log'), xaxis=list(title='Year'), ##plot
+         title='Logarithmic Scaling of Meteorites Per Year') -> year.barp ##log scale
+year.barp
+```
+
+A stacked barplot breaking down the meteorites by type into a lower classification level
+provides a viewer with insight into trends of meteorite landings.
+
+
+```{r, echo=FALSE}
+d.year.freq <- data.frame(table(meteor$Year[meteor$Differentiated == 'Differentiated'])) ##form freq dfs
+c.year.freq <- data.frame(table(meteor$Year[meteor$Undiff_Type == 'Carbonaceous']))
+o.year.freq <- data.frame(table(meteor$Year[meteor$Undiff_Type == 'Ordinary']))
+r.year.freq <- data.frame(table(meteor$Year[meteor$Undiff_Type == 'Rumuruti (R)']))
+e.year.freq <- data.frame(table(meteor$Year[meteor$Undiff_Type == 'Enstatite']))
+plot_ly(x=d.year.freq$Var1, y=d.year.freq$Freq, name = 'Differentiated', type="bar") %>% ##plot
+  add_trace(x=c.year.freq$Var1, y=c.year.freq$Freq, name = 'Carbonaceous') %>%
+  add_trace(x=o.year.freq$Var1, y=o.year.freq$Freq, name = 'Ordinary') %>%
+  add_trace(x=r.year.freq$Var1, y=r.year.freq$Freq, name = 'Rumuruti (R)') %>%
+  add_trace(x=e.year.freq$Var1, y=e.year.freq$Freq, name = 'Enstatite') %>%
+  layout(yaxis = list(title='Frequency', type='log'), xaxis=list(categoryorder ='ascending', ##log scale
+         categoryarray =year.freq$Var1,title='Year'), ##titles
+         title='Logarithmic Scaling of Meteorite Type By Year',
+         barmode='stack') -> year.sbarp ##stack barmode
+year.sbarp
+```
+
+Further breaking down Ordinary meteorites to their lowest type reveals more trends. Of note, the years
+with the largest frequency spikes seem to correlate with a high number of  LL type meteorites.
+
+
+```{r, echo=FALSE}
+h.year.freq <- data.frame(table(meteor$Year[meteor$Ordinary_Type == 'H Meteorite'])) ##form freq dfs
+l.year.freq <- data.frame(table(meteor$Year[meteor$Ordinary_Type == 'L Meteorite']))
+ll.year.freq <- data.frame(table(meteor$Year[meteor$Ordinary_Type == 'LL Meteorite']))
+plot_ly(x=h.year.freq$Var1, y=h.year.freq$Freq, name = 'H Meteorite', type="bar") %>% ##plot
+  add_trace(x=l.year.freq$Var1, y=l.year.freq$Freq, name = 'L Meteorite') %>%
+  add_trace(x=ll.year.freq$Var1, y=ll.year.freq$Freq, name = 'LL Meteorite') %>%
+  layout(yaxis = list(title='Frequency', type='log'), xaxis=list(categoryorder ='ascending', ##log scale
+         categoryarray =year.freq$Var1,title='Year'), ##titles
+         title='Logarithmic Scaling of Meteorite Type By Year',
+         barmode='stack') -> oyear.sbarp
+oyear.sbarp
+```
+
+## Histograms of Probability Fell vs Found
+
+The dataset also includes whether the landed meteorite fell or was found. A histogram
+breaking down probability of 'Fell' vs 'Found' across classification levels provides
+insight with regard to which is more likely dependent on classification.
+
+
+```{r, echo=FALSE}
+##Histograms of Probability Fell vs Found
+plot_ly(meteor, x=~Fell_Status, color=~Differentiated, histnorm='probability') %>% ##plot
+  layout(title='Probability Breakdown of Fell Status For All Meteorites',
+         yaxis=list(title='Probability')) %>%
+  add_histogram()
+```
+
+Further lowering the classification groupings, the following is a breakdown of 'Fell' vs
+'Found' across all Undifferentiated meteorites by types Carbonaceous, Enstatite, Ordinary,
+and Rumuruti (R).
+
+
+```{r, echo=FALSE}
+plot_ly(meteor, x=~Fell_Status, color=~Undiff_Type, histnorm='probability') %>% ##plot
+  layout(title='Probability Breakdown of Fell Status For Undifferentiated Meteorites',
+         yaxis=list(title='Probability')) %>%
+  add_histogram()
+```
+
+Lastly, this histogram examines 'Fell' vs 'Found' of Ordinary type meteorites. While
+L type meteorites had an almost even split with regard to 'Fell' vs 'Found', LL
+type meteorites were heavily found as opposed to fell. Almost 90% of LL type meteorites
+were found after impact rather than seen falling.
+
+
+```{r, echo=FALSE}
+plot_ly(meteor, x=~Fell_Status, color=~Ordinary_Type, histnorm='probability') %>% ##plot
+  layout(title='Probability Breakdown of Fell Status For Ordinary Meteorites',
+         yaxis=list(title='Probability')) %>%
+  add_histogram()
+```
+
+## Pie Charts of Type of Fell vs Found
+
+These two pie charts break down the percentages of lowest classification level for meteorites
+dependent on whether they fell or were found. Of note, LL type meteorites are only the fourth highest
+share of the pie for 'Fell', while they are the highest slice for 'Found'.
+
+
+```{r, echo=FALSE}
+##Pie Charts of Type of Fell vs Found
+meteor.fell <- filter(meteor, Fell_Status=='Fell') ##tidyverse to filter by 'Fell_Status'
+dcount.fell <- meteor.fell %>% count(Differentiated) ##tidyverse to filter Diff
+udcount.fell <- meteor.fell %>% count(Undiff_Type) ##tidyverse to filter Undiff
+ocount.fell <- meteor.fell %>% count(Ordinary_Type) ##tidyverse to filter Ordinary type
+pie.values.fell <- as.numeric(c(dcount.fell[1,2],udcount.fell[1,2],udcount.fell[2,2],udcount.fell[4,2],
+  ocount.fell[1,2],ocount.fell[2,2],ocount.fell[3,2])) ##grab values for pie chart
+plot_ly(meteor.fell, labels= c('Differentiated','Carbonaceous','Enstatite','Rumuruti (R)',
+        'H Meteorite','L Meteorite','LL Meteorite'), values= pie.values.fell, type='pie') %>% ##plot
+  layout(title='Pie Chart of Meteorite Type Breakdown By Having Fell') -> fell.pie
+fell.pie
+
+meteor.found <- filter(meteor, Fell_Status=='Found') ##tidyverse to filter by 'Fell_Status'
+dcount.found <- meteor.found %>% count(Differentiated) ##tidyverse to filter Diff
+udcount.found <- meteor.found %>% count(Undiff_Type) ##tidyverse to filter Undiff
+ocount.found <- meteor.found %>% count(Ordinary_Type) ##tidyverse to filter Ordinary type
+pie.values.found <- as.numeric(c(dcount.found[1,2],udcount.found[1,2],udcount.found[2,2],udcount.found[4,2],
+  ocount.found[1,2],ocount.found[2,2],ocount.found[3,2]))
+plot_ly(meteor.found, labels= c('Differentiated','Carbonaceous','Enstatite','Rumuruti (R)',
+  'H Meteorite','L Meteorite','LL Meteorite'), values= pie.values.found, type='pie') %>% ##plot
+  layout(title='Pie Chart of Meteorite Type Breakdown By Having Been Found') -> found.pie
+found.pie
+```
+
+## Boxplots of Mass by Meteorite Type
+
+The dataset also includes recorded mass of meteorites in grams. The boxplots below,
+with one examining all meteorites and the next two highest classification levels and the
+other examining Ordinary type meteorites and their respective classification, show the associated
+five number summary with respect to mass as well as outliers. The y-axis is logarithmically scaled to
+provide a cleaner view of the data, given that the vast majority of meteorites are on the smaller end
+with regard to mass, with a number of very significant outliers. Two interesting points within the first
+boxplot are the higher Q1, Median, and Q3 values for Differentiated Mass compared to Undifferentiated Mass
+and that the largest meteorite by mass, with a multitude greater than five times heavier
+than the second heaviest meteorite, is a Differentiated meteorite.
+
+
+```{r, echo=FALSE}
+##Boxplots of Mass by Meteorite Type
+plot_ly(y = meteor$Mass, type="box", name = 'All Mass') %>% ##plot
+  add_trace(y = meteor$Mass[meteor$Differentiated == 'Undifferentiated'], name = 'Undifferentiated Mass') %>% ##add traces
+  add_trace(y = meteor$Mass[meteor$Differentiated == 'Differentiated'], name = 'Differentiated Mass') %>%
+  add_trace(y = meteor$Mass[meteor$Undiff_Type == 'Carbonaceous'], name = 'Carbonaceous Mass') %>%
+  add_trace(y = meteor$Mass[meteor$Undiff_Type == 'Ordinary'], name = 'Ordinary Mass') %>%
+  add_trace(y = meteor$Mass[meteor$Undiff_Type == 'Rumuruti (R)'], name = 'Rumuruti (R) Mass') %>%
+  add_trace(y = meteor$Mass[meteor$Undiff_Type == 'Enstatite'], name = 'Enstatite Mass') %>%
+  layout(yaxis = list(title='Mass (g)',type = 'log'), title='Logarithmic Scaling of Meteorite Mass') -> mass.boxp ##log scale
+mass.boxp
+```
+
+Two aspects that stand out with regard to the second boxplot are the drastically smaller Q1, Median,
+and Q3 values for LL type meteorites when compared to other types of Ordinary meteorites or Ordinary
+meteorites as a whole. A second point of observation is that the two largest meteorites by mass are
+H type meteorites, both significantly heavier than the heaviest L type or LL type meteorite.
+
+
+```{r, echo=FALSE}
+plot_ly(y = meteor$Mass[meteor$Undiff_Type == 'Ordinary'], type="box", name = 'Ordinary Mass') %>% ##plot
+  add_trace(y = meteor$Mass[meteor$Ordinary_Type == 'H Meteorite'], name = 'H Meteorite Mass') %>% ##add traces
+  add_trace(y = meteor$Mass[meteor$Ordinary_Type == 'L Meteorite'], name = 'L Meteorite Mass') %>%
+  add_trace(y = meteor$Mass[meteor$Ordinary_Type == 'LL Meteorite'], name = 'LL Meteorite Mass') %>%
+  layout(yaxis = list(title='Mass (g)',type = 'log'), title='Logarithmic Scaling of Meteorite Mass') -> omass.boxp ##log scale
+omass.boxp
+```
+
+## Scatterplots of Mass and Year by Meteorite Type
+A scatterplot displaying the different mass values for each meteorite by year provides a colorful
+way to examine the mass of meteorites by year grouped by lowest classification type. The first scatterplot
+shows the mass for each meteorite, logarithmically scaled, broken down by type, per year.
+
+
+```{r, echo=FALSE}
+##Scatterplots of Mass and Year by Meteorite Type
+plot_ly(data=meteor, x=~Year, y=~Mass, color=~Lowest_Class, type='scatter', mode='markers') %>% ##plot
+  layout(yaxis=list(type='log'), title= 'Mass of Meteorites Per Year By Type')-> mass.plot
+mass.plot
+```
+
+The next scatterplot shows the aggregated maximum mass across types per year. It is interesting to note
+a general downward trend exists for Enstatite type meteorites. Considering the relative rarity of the
+Enstatite type, this is a strong indicator that modern technology is capable of identifying much smaller
+meteorites than technology of generations past.
+
+
+```{r, echo=FALSE}
+maxmass=aggregate(x=meteor[c('Mass')], by=meteor[c('Year','Lowest_Class')], FUN=max, na.rm= TRUE) ##plot
+plot_ly(data=maxmass, x=~Year, y=~Mass, color=~Lowest_Class, type='scatter', mode='markers') %>%
+  layout(yaxis=list(type='log'), title= 'Maximum Meteorite Mass Per Year By Type')-> maxmass.plot
+maxmass.plot
+```
+
+This scatterplot shows the aggregated minimum mass across types per year. There appears to be
+a slight downward trend in the data. As mentioned previously, this is most likely an indication
+of human advancement in detecting even the smallest meteorites.
+
+
+```{r, echo=FALSE}
+minmass=aggregate(x=meteor[c('Mass')], by=meteor[c('Year','Lowest_Class')], FUN=min, na.rm= TRUE) ##plot
+plot_ly(data=minmass, x=~Year, y=~Mass, color=~Lowest_Class, type='scatter', mode='markers') %>%
+  layout(yaxis=list(type='log'), title= 'Minimum Meteorite Mass Per Year By Type')-> minmass.plot
+minmass.plot
+```
+
+This graph shows a scatterplot of aggregated mean across multiple meteorite types broken down by year.
+
+
+```{r, echo=FALSE}
+avgmass=aggregate(x=meteor[c('Mass')], by=meteor[c('Year','Lowest_Class')], FUN=mean, na.rm= TRUE) ##plot
+plot_ly(data=avgmass, x=~Year, y=~Mass, color=~Lowest_Class, type='scatter', mode='markers') %>%
+  layout(yaxis=list(type='log'), title= 'Average Meteorite Mass Per Year By Type')-> avgmass.plot
+avgmass.plot
+```
+
+
+Lastly, this scatterplot shows the aggregated standard deviation of mass across meteorite types
+by year. A point of interest is that prior to 1914, only one year had recordings of two or more
+LL type meteorites.
+
+```{r, echo=FALSE}
+stddevmass=aggregate(x=meteor[c('Mass')], by=meteor[c('Year','Lowest_Class')], FUN=sd, na.rm= TRUE) ##plot
+plot_ly(data=stddevmass, x=~Year, y=~Mass, color=~Lowest_Class, type='scatter', mode='markers') %>%
+  layout(yaxis=list(type='log'), title= 'Standard Deviation of Meteorite Mass Per Year By Type')-> stddevmass.plot
+stddevmass.plot
+```
+
+## Bar Chart of Mean and Median Mass by Meteorite Type
+
+This bar chart shows the mean and median mass of each lowest classification type.
+The y-axis is logarithmically scaled. Data is said to be skewed right if the mean is
+greater than the median while data is said to be skewed left if the mean is less
+than the median. For all types except Rumuruti (R), the mean is vastly greater than the median
+which implies a heavy skew right.
+
+
+```{r, echo=FALSE}
+##Bar Chart of Mean and Median Mass by Meteorite Type
+meanmass.type=aggregate(x=meteor[c('Mass')], by=meteor[c('Lowest_Class')], FUN=mean, na.rm=TRUE) ##mean aggregate
+medianmass.type=aggregate(x=meteor[c('Mass')], by=meteor[c('Lowest_Class')], FUN=median, na.rm=TRUE)
+plot_ly(x=meanmass.type$Lowest_Class, y =meanmass.type$Mass, type = 'bar', name = 'Mean') %>% ##plot
+  add_trace(x=meanmass.type$Lowest_Class, y =medianmass.type$Mass, name= 'Median') %>%
+  layout(yaxis = list(title = 'Mass (g)', type= 'log'), barmode = 'group') -> meanmedian.bar ##log scale
+meanmedian.bar
+```
+
+## Density Curve of Mass by Meteorite Type
+
+The below density curve shows a density curve of mass, logarithmically scaled, broken down
+across lowest level classification. While there are only five Rumuruti (R) meteorite type
+data points in the dataset, it is interesting to note the shape of that curve as well as
+the curves for LL type meteorite and H type meteorite compared to the other density curves.
+
+
+```{r, echo=FALSE}
+##Density Curve of Mass by Meteorite Type
+mmasslc <- meteor[c('Mass','Lowest_Class')] ##new tibble
+ggplot(mmasslc, aes(Mass, fill= Lowest_Class)) + geom_density(alpha=0.25) -> masscurve.scatter ##create in ggplot
+masscurve.scatter <- ggplotly(masscurve.scatter+scale_x_continuous(trans= 'log10')+ylab('Density') ##move plot to plotly
+    +xlab('Mass (g)')+ggtitle('Density Curve of Mass With Logarithmic Scale Per Type') ##title
+    +theme(plot.title = element_text(hjust = 0.5)))
+masscurve.scatter
+```
+
+## Map of Meteorite Coordinates by Type
+
+The dataset also includes recorded latitude and longitude for each meteorite landing. The following map displays
+all meteorite impact locations color-coded by lowest classification level and size scaled by mass. Hovering over
+a data point on the map displays the name of the meteorite, the mass, and the year of impact- coded by color.
+
+
+```{r, echo=FALSE}
+##Map of Meteorite Coordinates by Type
+plot_mapbox(meteor) %>% ##map
+  add_markers(x=~Rec_Long, y=~Rec_Lat, size=~Mass, color=~Lowest_Class, text=~paste('Name:',Name,'- Mass:',Mass,'grams - Year:',Year),
+  hoverinfo='text', marker=list(sizeref=0.25)) ##size scaled by 4
+```
+
+## Distribution of Mass
+
+The following two histograms demonstrate the distribution of the mass variable of all meteorites
+with a recorded mass value. Both graphs show that the data is heavily skewed to the right, with a
+huge number of outliers including a single massive outlier. The following probability histogram
+demonstrates this.
+
+```{r, echo=FALSE}
+##Distribution of Mass
+plot_ly(x=meteor$Mass, type='histogram', histnorm='probability') %>% ##plot
+  layout(title='Distribution of Meteoric Mass', yaxis=list(type='log',title='Probability'), ##log scale
+  xaxis=list(title='Mass (g)')) -> massdist.hist
+massdist.hist
+```
+
+The second of the two histograms shows density and is logarithmically scaled to provide a
+clearer view of the curve. It is interesting to note that while density peaks around 10 grams,
+it is not a smooth path down the curve to the x-axis. There is a significant upward bump
+in density around 1000 grams which leads to a temporary increase in density before falling once again.
+
+
+```{r, echo=FALSE}
+ggplot(data.frame(meteor), aes(x=meteor$Mass)) + geom_density(alpha=0.5) -> massdistlog.hist ##create in ggplot
+massdistlog.hist <- ggplotly(massdistlog.hist+scale_x_continuous(trans= 'log10')+ylab('Density') ##move plot to plotly
+    +xlab('Mass (g)')+ggtitle('Density Curve of Mass With Logarithmic Scale')
+    +theme(plot.title = element_text(hjust = 0.5)))
+massdistlog.hist
+```
+
+# Application of Central Limit Theorem
+
+The Central Limit Theorem states that the distribution of sample means taken independently
+from a population are normally distributed even if the population itself does not follow
+a normal distribution. The sample means will also match the population mean. Furthermore,
+the theorem states that the standard deviation of a sample is equal to the standard deviation
+of the population divided by the square root of the associated sample size. In the following example,
+the mean and standard deviations for samples of size 25, 50, 75, 100, 125, and 150 will be analyzed.
+
+
+```{r, echo=FALSE}
+##Central Limit Theorem
+mmass <- meteor$Mass ##mass
+samples <- 1000 #number of samples
+xbar <- numeric(samples) ##xbar list
+for (size in c(25,50,75,100,125,150)) { #loop through sample to populate xbar
+  for (i in 1:samples) {
+    xbar[i] <- mean(sample(mmass, size, replace = FALSE), na.rm=TRUE) ##xbar
+  }
+  
+  ggplot(data.frame(xbar), aes(x=xbar)) + geom_density(alpha=0.5) -> loop.hist ##create in ggplot
+  loop.hist <- ggplotly(loop.hist+scale_x_continuous(trans= 'log10')+ylab('Density') ##move plot to plotly
+                               +xlab('Average Mass (g)')+ggtitle(paste("Sample Size =",size,
+                                'With Logarithmic Scale'))
+                               +theme(plot.title = element_text(hjust = 0.5)))
+  
+  cat("Sample Size = ", size, " Mean = ", mean(xbar), ##print statement of mean/sd
+      " SD = ", sd(xbar), "\n")
+  
+  print(loop.hist) ##display each plot
+  
+}
+par(mfrow = c(1,1))
+paste('Population Mean: ', round(mean(mmass, na.rm=TRUE),2)) ##pop mean
+paste('Population SD: ', round(sd(mmass, na.rm=TRUE),2)) ##pop sd
+paste('CLM Estimate given Sample Size of',c(25,50,75,100,125,150), 'is:', round(sd(mmass, na.rm=TRUE)/sqrt(c(25,50,75,100,125,150)),2)) ##check sample sd vs sqrt values
+```
+
+# Various Sampling Methods
+
+## Population Distribution Table
+
+The complete distribution table among lowest classification levels for the population is below.
+
+
+```{r, echo=FALSE}
+##Sampling Methods
+sample.size=125 ##sample size
+round(table(meteor$Lowest_Class)/nrow(meteor),2) ##pop distribution by lowest classification type
+```
+
+## Simple Random Sampling Without Replacement Distribution Table
+
+Below is the distribution table broken down by lowest classification level created with
+simple random sampling without replacement, utilizing a sample size of 125.
+
+
+```{r, echo=FALSE}
+#Simple Random Sampling Without Replacement
+mass.srswor <- srswor(sample.size,nrow(meteor)) ##srs without replacement
+df.msrswor <- meteor[mass.srswor !=0,] ##new df
+table(df.msrswor$Lowest_Class)/sample.size ##df table
+```
+
+## Systematic Sampling Distribution Table
+
+This table shows the distribution of count by lowest classification level with sample size 125,
+from the use of systematic sampling.
+
+
+```{r, echo=FALSE}
+#Systematic Sampling
+meteor.nrow <- nrow(meteor)
+meteor.ss <- sample.size
+meteor.ceiling <- ceiling(meteor.nrow/meteor.ss) ##ceiling for systematic sampling
+meteor.r <- sample(meteor.ceiling,1) ##r value
+mass.ss <- seq(meteor.r, by=meteor.ceiling, length=meteor.ss)
+df.mss <- meteor[mass.ss,] #new df
+table(df.mss$Lowest_Class)/sample.size ##df table
+```
+
+## Systematic Sampling With Unequal Probabilities Distribution Table
+
+The following table shows the distribution of count by lowest classification level created
+with systematic sampling with unequal probabilities, with a weight on mass. A sample size
+of 125 was used.
+
+
+```{r, echo=FALSE}
+#Systematic Sampling With Unequal Probabilities
+meteor.pik <- inclusionprobabilities(meteor$Mass, sample.size) ##pik, weighted by Mass
+mass.upss <- UPsystematic(meteor.pik)
+df.mupss <- meteor[mass.upss!=0,] ##new df
+table(df.mupss$Lowest_Class)/sample.size ##df table
+```
+
+## Stratified Sampling Distribution Table
+
+The last distribution table is broken down by lowest classification level and was created
+using stratified sampling, with a sample size of 125.
+
+
+```{r, echo=FALSE}
+#Stratified Sampling
+meteor.nonone <- meteor %>% filter(Lowest_Class != 'Rumuruti (R)') ##filter out Rumuruti (R) as low value count can cause errors
+meteor.nonone <- #meteor.nonone %>% filter(Lowest_Class != 'Enstatite')
+meteor.strat <- meteor.nonone[order(meteor.nonone$Lowest_Class),]
+mass.strat <- strata(meteor.strat, stratanames=c('Lowest_Class'),size=c(table(meteor.nonone$Lowest_Class)/nrow(meteor.nonone)*sample.size), method='srswor')
+df.mstrat <- getdata(meteor.strat, mass.strat) ##df strat sampling
+table(df.mstrat$Lowest_Class) ##df table
+```
+
+## Comparison of Various Sample Means and Population Mean
+
+Comparing the population mean against the various sample means, the closest mean came from the
+stratified sampling mean. This mean was significantly larger than the population mean. The mean
+from systematic sampling with unequal probabilities was drastically higher, which makes sense
+given the huge rightward skew of the data by mass and the fact that inclusion was weighted by mass. Lastly,
+the mean from simple random sampling and systematic sampling was lower than the population mean.
+
+
+```{r, echo=FALSE}
+paste('Mean of Data from',c('Simple Random Sampling Without Replacement','Systematic Sampling',
+    'Systematic Sampling with Unequal Probabilities', 'Stratified Sampling', 'Population'), 'is:', ##paste
+    round(c(mean(df.msrswor$Mass, na.rm=TRUE),mean(df.mss$Mass, na.rm=TRUE),mean(df.mupss$Mass, na.rm=TRUE),
+      mean(df.mstrat$Mass, na.rm=TRUE),mean(meteor$Mass, na.rm=TRUE)),2)) ##mean
+```
